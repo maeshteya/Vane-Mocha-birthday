@@ -1,0 +1,35 @@
+{
+  "entities": {
+    "RSVP": {
+      "title": "RSVP",
+      "description": "Guest RSVP response for the birthday invitation",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Full name of the guest"
+        },
+        "message": {
+          "type": "string",
+          "description": "Optional message for the host"
+        },
+        "isAttending": {
+          "type": "boolean",
+          "description": "Whether the guest is attending"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of the response"
+        }
+      },
+      "required": ["name", "isAttending", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/rsvps/{rsvpId}": {
+      "schema": "RSVP",
+      "description": "Collection of RSVP responses"
+    }
+  }
+}

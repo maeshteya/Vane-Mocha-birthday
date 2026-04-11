@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: rsvps
+    // Document ID: auto-generated
+    // Fields:
+    //   - name: string (required, 1-100 chars)
+    //   - message: string (optional, 0-500 chars)
+    //   - isAttending: bool (required)
+    //   - createdAt: timestamp (required)
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isValidRSVP(data) {
+      return data.keys().hasAll(['name', 'isAttending', 'createdAt']) &&
+             data.keys().hasOnly(['name', 'isAttending', 'createdAt', 'message']) &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+             data.isAttending is bool &&
+             data.createdAt is timestamp &&
+             (!('message' in data) || (data.message is string && data.message.size() <= 500));
+    }
+
+    match /rsvps/{rsvpId} {
+      // Allow anyone to create an RSVP (public invitation)
+      allow create: if isValidRSVP(request.resource.data);
+      
+      // Only the admin can read the list of RSVPs
+      allow read: if isAdmin();
+      
+      allow update, delete: if isAdmin();
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+             (request.auth.token.email == "maeshteya@gmail.com" && request.auth.token.email_verified == true);
+    }
+  }
+}
