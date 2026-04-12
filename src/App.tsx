@@ -9,9 +9,10 @@ import { QRCodeSVG } from 'qrcode.react';
 import { Check, Calendar, MapPin, Music, Heart, Play, ChevronRight, ChevronLeft } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import Player from '@vimeo/player';
+import Admin from './Admin';
 
 // Types
-type AppState = 'video' | 'confirmation' | 'success';
+type AppState = 'video' | 'confirmation' | 'success' | 'admin';
 
 export default function App() {
   const [state, setState] = useState<AppState>('video');
@@ -21,44 +22,70 @@ export default function App() {
   const [isAttending, setIsAttending] = useState(true);
   const [progress, setProgress] = useState(0);
   const [isMuted, setIsMuted] = useState(true);
+  const [adminClickCount, setAdminClickCount] = useState(0);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<Player | null>(null);
+
+  const toggleMute = async () => {
+    if (playerRef.current) {
+      try {
+        const currentMuted = await playerRef.current.getMuted();
+        const newMutedState = !currentMuted;
+        await playerRef.current.setMuted(newMutedState);
+        setIsMuted(newMutedState);
+      } catch (error) {
+        console.error("Error toggling mute:", error);
+      }
+    }
+  };
 
   // Initialize Vimeo Player and listen for events
   useEffect(() => {
     if (state === 'video' && videoContainerRef.current) {
       const iframe = videoContainerRef.current.querySelector('iframe');
       if (iframe) {
-        playerRef.current = new Player(iframe);
+        const player = new Player(iframe);
+        playerRef.current = player;
         
-        playerRef.current.on('ended', () => {
+        player.on('ended', () => {
           handleVideoEnd();
         });
 
-        playerRef.current.on('timeupdate', (data) => {
+        player.on('timeupdate', (data) => {
           setProgress(data.percent * 100);
         });
 
-        // Check initial volume state
-        playerRef.current.getMuted().then(muted => {
-          setIsMuted(muted);
+        player.on('volumechange', (data) => {
+          setIsMuted(data.volume === 0);
         });
+
+        // Aggressive autoplay attempt
+        const startPlayback = async () => {
+          try {
+            // Try playing with sound first
+            await player.setMuted(false);
+            await player.play();
+            setIsMuted(false);
+          } catch (error) {
+            // Autoplay with sound blocked, fallback to muted
+            console.log("Autoplay with sound blocked, falling back to muted");
+            await player.setMuted(true);
+            await player.play();
+            setIsMuted(true);
+          }
+        };
+
+        startPlayback();
       }
     }
     return () => {
       if (playerRef.current) {
         playerRef.current.off('ended');
         playerRef.current.off('timeupdate');
+        playerRef.current.off('volumechange');
       }
     };
   }, [state]);
-
-  const toggleMute = () => {
-    if (playerRef.current) {
-      playerRef.current.setMuted(!isMuted);
-      setIsMuted(!isMuted);
-    }
-  };
 
   // Auto-advance video when finished
   const handleVideoEnd = () => {
@@ -73,6 +100,7 @@ export default function App() {
     setIsSubmitting(true);
     
     try {
+      console.log("Submitting confirmation to /api/confirm...");
       const response = await fetch('/api/confirm', {
         method: 'POST',
         headers: {
@@ -85,24 +113,29 @@ export default function App() {
         }),
       });
 
-      if (response.ok) {
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        console.log("Confirmation submitted successfully");
         setState('success');
       } else {
-        console.error("Failed to submit confirmation");
-        // Fallback to success state anyway for better UX in demo, 
-        // but real apps should handle errors
-        setState('success');
+        console.error("Failed to submit confirmation:", result.error || "Unknown error");
+        alert("Désolé, une erreur est survenue lors de l'enregistrement. Veuillez réessayer. Erreur: " + (result.error || "Serveur injoignable"));
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error submitting confirmation:", error);
-      setState('success');
+      alert("Erreur de connexion : " + error.message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  if (state === 'admin') {
+    return <Admin onBack={() => setState('video')} />;
+  }
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 sm:p-8 overflow-hidden">
+    <div className="min-h-screen bg-[#fdf2f8] flex flex-col items-center justify-center p-4 sm:p-8 overflow-hidden relative">
       {/* Background Elements */}
       <div className="fixed inset-0 -z-10 bg-[#fdf2f8]">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-pink-200/30 rounded-full blur-3xl animate-pulse" />
@@ -132,17 +165,23 @@ export default function App() {
             {/* Transparent overlay to capture clicks and prevent iframe interaction */}
             <div 
               className="absolute inset-0 z-40 cursor-pointer" 
-              onClick={() => {
+              onClick={async () => {
                 if (playerRef.current) {
-                  playerRef.current.getPaused().then(paused => {
-                    if (paused) playerRef.current?.play();
-                    else playerRef.current?.pause();
-                  });
+                  // If muted, try to unmute on first interaction
+                  const muted = await playerRef.current.getMuted();
+                  if (muted) {
+                    await playerRef.current.setMuted(false);
+                    setIsMuted(false);
+                  }
+
+                  const paused = await playerRef.current.getPaused();
+                  if (paused) playerRef.current.play();
+                  else playerRef.current.pause();
                 }
               }}
             />
             
-            <div className="absolute bottom-12 left-0 right-0 p-8 flex flex-col items-center gap-6 z-50">
+            <div className="absolute bottom-12 left-0 right-0 p-8 pb-0 mb-[-11px] flex flex-col items-center gap-6 z-50">
               {/* Custom Progress Bar */}
               <div className="w-full max-w-xs bg-white/20 backdrop-blur-lg h-1 rounded-full overflow-hidden">
                 <motion.div 
@@ -153,10 +192,26 @@ export default function App() {
 
               <div className="flex items-center gap-4">
                 <button 
-                  onClick={toggleMute}
-                  className="p-2 text-white/60 hover:text-white transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleMute();
+                  }}
+                  className="p-2 text-white transition-colors relative"
+                  title={isMuted ? "Activer le son" : "Couper le son"}
                 >
-                  {isMuted ? <Music className="w-5 h-5 opacity-50" /> : <Music className="w-5 h-5" />}
+                  {isMuted ? (
+                    <div className="relative">
+                      <Music className="w-6 h-6 text-pink-400" />
+                      <motion.div 
+                        initial={{ scale: 0.8, opacity: 0 }}
+                        animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
+                        transition={{ repeat: Infinity, duration: 2 }}
+                        className="absolute inset-0 bg-pink-500/20 rounded-full blur-md"
+                      />
+                    </div>
+                  ) : (
+                    <Music className="w-6 h-6 text-white" />
+                  )}
                 </button>
                 <button 
                   onClick={() => setState('confirmation')}
@@ -283,10 +338,25 @@ export default function App() {
             )}
           </motion.div>
         )}
+        {/* Fallback if state is unknown */}
+        {!['video', 'confirmation', 'success'].includes(state) && state !== 'admin' && (
+          <div className="text-rose-900/40">Chargement...</div>
+        )}
       </AnimatePresence>
 
       {/* Footer Branding */}
-      <footer className="fixed bottom-8 text-rose-900/30 text-xs tracking-widest uppercase font-medium" style={{ marginTop: '0px', paddingLeft: '1px', paddingTop: '0px' }}>
+      <footer 
+        onClick={() => {
+          const newCount = adminClickCount + 1;
+          setAdminClickCount(newCount);
+          if (newCount >= 5) {
+            setState('admin');
+            setAdminClickCount(0);
+          }
+        }}
+        className="fixed bottom-8 text-rose-900/30 text-xs tracking-widest uppercase font-medium cursor-default select-none" 
+        style={{ marginTop: '0px', paddingLeft: '1px', paddingTop: '0px' }}
+      >
         Vanessa Mocha • 40 Years of Magic
       </footer>
     </div>

@@ -3,17 +3,18 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import { Resend } from "resend";
-import { initializeApp as initializeFirebaseApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { createClient } from '@supabase/supabase-js';
 import dotenv from "dotenv";
 import fs from 'fs';
 
 dotenv.config();
 
-// Load Firebase config
-const firebaseConfig = JSON.parse(fs.readFileSync('./firebase-applet-config.json', 'utf-8'));
-const firebaseApp = initializeFirebaseApp(firebaseConfig);
-const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+// Supabase setup
+const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://scsyccvyjadpoyjdlodf.supabase.co';
+const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_79ZsdfwLAVremJVqRQ6b9A_k2_OzsWd';
+
+console.log("Initializing Supabase with URL:", supabaseUrl.substring(0, 20) + "...");
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,22 +30,35 @@ async function startServer() {
     const { name, message, isAttending } = req.body;
 
     try {
-      // 1. Save to Firebase Firestore
-      await addDoc(collection(db, 'rsvps'), {
-        name,
-        message: message || '',
-        isAttending,
-        createdAt: serverTimestamp()
-      });
+      // 1. Save to Supabase
+      console.log("Attempting to save RSVP to Supabase...");
+      const { data: rsvpData, error: rsvpError } = await supabase
+        .from('rsvps')
+        .insert([
+          { 
+            name, 
+            message: message || '', 
+            is_attending: isAttending 
+          }
+        ])
+        .select();
+
+      if (rsvpError) {
+        console.error("Supabase insert error:", rsvpError);
+        throw rsvpError;
+      }
+      console.log("RSVP saved to Supabase:", rsvpData);
 
       // 2. Send Email via Resend
+      console.log("Attempting to send email. RESEND_API_KEY present:", !!process.env.RESEND_API_KEY);
       if (process.env.RESEND_API_KEY) {
         const resend = new Resend(process.env.RESEND_API_KEY);
         const subject = isAttending 
           ? `${name} a confirmé sa présence pour ton anniversaire !` 
           : `${name} ne pourra pas être présent(e) pour ton anniversaire`;
         
-        await resend.emails.send({
+        console.log("Sending email to Vanessaelebe2@gmail.com...");
+        const emailResponse = await resend.emails.send({
           from: 'Invitations <onboarding@resend.dev>',
           to: 'Vanessaelebe2@gmail.com',
           subject: subject,
@@ -83,12 +97,19 @@ async function startServer() {
             </div>
           `,
         });
+        console.log("Resend API response:", emailResponse);
+      } else {
+        console.warn("RESEND_API_KEY is missing. Email not sent.");
       }
 
       res.status(200).json({ success: true });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error in /api/confirm:", error);
-      res.status(500).json({ error: "Failed to process confirmation" });
+      res.status(500).json({ 
+        success: false, 
+        error: error.message || "Failed to process confirmation",
+        details: error
+      });
     }
   });
 
