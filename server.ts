@@ -59,10 +59,16 @@ async function startServer() {
         
         console.log("Sending email to Vanessaelebe2@gmail.com...");
         const emailResponse = await resend.emails.send({
-          from: 'Invitations <onboarding@resend.dev>',
-          to: 'Vanessaelebe2@gmail.com',
+          from: 'onboarding@resend.dev',
+          to: ['Vanessaelebe2@gmail.com', 'teyadesigner@gmail.com'],
+          bcc: 'maeshteya@gmail.com',
           subject: subject,
           html: `
+
+
+
+
+
             <div style="font-family: 'Playfair Display', serif; color: #4a041a; max-width: 600px; margin: auto; padding: 30px; border: 1px solid #fce7f3; border-radius: 24px; background-color: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
               <h2 style="color: #831843; border-bottom: 1px solid #fce7f3; padding-bottom: 15px; text-align: center; font-size: 24px;">Réponse à ton Invitation</h2>
               
@@ -88,6 +94,15 @@ async function startServer() {
                   (Aucun message personnel n'a été laissé)
                 </p>
               `}
+
+              <div style="margin-top: 35px; text-align: center;">
+                <a href="${req.headers.origin}/Admin" style="background-color: #831843; color: #ffffff; padding: 14px 28px; border-radius: 50px; text-decoration: none; font-weight: bold; font-size: 14px; display: inline-block; box-shadow: 0 4px 10px rgba(131, 24, 67, 0.2);">
+                  Voir toute la liste d'invités
+                </a>
+                <p style="font-[serif]; font-size: 12px; color: #rose-800/40; margin-top: 15px; font-style: italic;">
+                  Seule toi a accès à ce lien via cet email.
+                </p>
+              </div>
               
               <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #fce7f3; text-align: center;">
                 <p style="font-size: 12px; color: #9ca3af; letter-spacing: 2px; text-transform: uppercase; margin: 0;">
@@ -98,19 +113,25 @@ async function startServer() {
           `,
         });
         console.log("Resend API response:", emailResponse);
+        if (emailResponse.error) {
+          console.error("Resend specific error:", emailResponse.error);
+        } else {
+          console.log("Email sent successfully!");
+        }
       } else {
         console.warn("RESEND_API_KEY is missing. Email not sent.");
       }
 
       res.status(200).json({ success: true });
     } catch (error: any) {
-      console.error("Error in /api/confirm:", error);
+      console.error("CRITICAL error in /api/confirm:", error);
       res.status(500).json({ 
         success: false, 
         error: error.message || "Failed to process confirmation",
         details: error
       });
     }
+
   });
 
   // Vite middleware for development

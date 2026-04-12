@@ -6,15 +6,16 @@
 import { useState, useRef, FormEvent, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Check, Calendar, MapPin, Music, Heart, Play, ChevronRight, ChevronLeft } from 'lucide-react';
-import { cn } from '@/src/lib/utils';
+import { Check, Calendar, MapPin, Music, Heart, Play, ChevronRight, ChevronLeft, List } from 'lucide-react';
+import { cn } from './lib/utils';
 import Player from '@vimeo/player';
 import Admin from './Admin';
+import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 
 // Types
-type AppState = 'video' | 'confirmation' | 'success' | 'admin';
+type AppState = 'video' | 'confirmation' | 'success';
 
-export default function App() {
+function InvitationPage() {
   const [state, setState] = useState<AppState>('video');
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
@@ -22,9 +23,9 @@ export default function App() {
   const [isAttending, setIsAttending] = useState(true);
   const [progress, setProgress] = useState(0);
   const [isMuted, setIsMuted] = useState(true);
-  const [adminClickCount, setAdminClickCount] = useState(0);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<Player | null>(null);
+  const navigate = useNavigate();
 
   const toggleMute = async () => {
     if (playerRef.current) {
@@ -39,7 +40,6 @@ export default function App() {
     }
   };
 
-  // Initialize Vimeo Player and listen for events
   useEffect(() => {
     if (state === 'video' && videoContainerRef.current) {
       const iframe = videoContainerRef.current.querySelector('iframe');
@@ -59,16 +59,13 @@ export default function App() {
           setIsMuted(data.volume === 0);
         });
 
-        // Aggressive autoplay attempt
         const startPlayback = async () => {
           try {
-            // Try playing with sound first
             await player.setMuted(false);
             await player.play();
             setIsMuted(false);
           } catch (error) {
-            // Autoplay with sound blocked, fallback to muted
-            console.log("Autoplay with sound blocked, falling back to muted");
+            console.log("Autoplay blocked, falling back to muted");
             await player.setMuted(true);
             await player.play();
             setIsMuted(true);
@@ -87,7 +84,6 @@ export default function App() {
     };
   }, [state]);
 
-  // Auto-advance video when finished
   const handleVideoEnd = () => {
     setState('confirmation');
   };
@@ -100,7 +96,6 @@ export default function App() {
     setIsSubmitting(true);
     
     try {
-      console.log("Submitting confirmation to /api/confirm...");
       const response = await fetch('/api/confirm', {
         method: 'POST',
         headers: {
@@ -116,27 +111,19 @@ export default function App() {
       const result = await response.json();
 
       if (response.ok && result.success) {
-        console.log("Confirmation submitted successfully");
         setState('success');
       } else {
-        console.error("Failed to submit confirmation:", result.error || "Unknown error");
-        alert("Désolé, une erreur est survenue lors de l'enregistrement. Veuillez réessayer. Erreur: " + (result.error || "Serveur injoignable"));
+        alert("Désolé, une erreur est survenue lors de l'enregistrement.");
       }
     } catch (error: any) {
-      console.error("Error submitting confirmation:", error);
       alert("Erreur de connexion : " + error.message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (state === 'admin') {
-    return <Admin onBack={() => setState('video')} />;
-  }
-
   return (
     <div className="min-h-screen bg-[#fdf2f8] flex flex-col items-center justify-center p-4 sm:p-8 overflow-hidden relative">
-      {/* Background Elements */}
       <div className="fixed inset-0 -z-10 bg-[#fdf2f8]">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-pink-200/30 rounded-full blur-3xl animate-pulse" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-rose-200/30 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
@@ -162,18 +149,15 @@ export default function App() {
               ></iframe>
             </div>
 
-            {/* Transparent overlay to capture clicks and prevent iframe interaction */}
             <div 
               className="absolute inset-0 z-40 cursor-pointer" 
               onClick={async () => {
                 if (playerRef.current) {
-                  // If muted, try to unmute on first interaction
                   const muted = await playerRef.current.getMuted();
                   if (muted) {
                     await playerRef.current.setMuted(false);
                     setIsMuted(false);
                   }
-
                   const paused = await playerRef.current.getPaused();
                   if (paused) playerRef.current.play();
                   else playerRef.current.pause();
@@ -182,7 +166,6 @@ export default function App() {
             />
             
             <div className="absolute bottom-12 left-0 right-0 p-8 pb-0 mb-[-11px] flex flex-col items-center gap-6 z-50">
-              {/* Custom Progress Bar */}
               <div className="w-full max-w-xs bg-white/20 backdrop-blur-lg h-1 rounded-full overflow-hidden">
                 <motion.div 
                   className="h-full bg-pink-500"
@@ -197,21 +180,8 @@ export default function App() {
                     toggleMute();
                   }}
                   className="p-2 text-white transition-colors relative"
-                  title={isMuted ? "Activer le son" : "Couper le son"}
                 >
-                  {isMuted ? (
-                    <div className="relative">
-                      <Music className="w-6 h-6 text-pink-400" />
-                      <motion.div 
-                        initial={{ scale: 0.8, opacity: 0 }}
-                        animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
-                        transition={{ repeat: Infinity, duration: 2 }}
-                        className="absolute inset-0 bg-pink-500/20 rounded-full blur-md"
-                      />
-                    </div>
-                  ) : (
-                    <Music className="w-6 h-6 text-white" />
-                  )}
+                  <Music className={cn("w-6 h-6", isMuted ? "text-pink-400" : "text-white")} />
                 </button>
                 <button 
                   onClick={() => setState('confirmation')}
@@ -243,7 +213,7 @@ export default function App() {
             >
               <div className="text-center space-y-5">
                 <div className="space-y-2">
-                  <h2 className="text-[24px] font-serif text-rose-900 leading-tight" style={{ paddingTop: '5px', marginBottom: '10px' }}>Serez-vous des nôtres ?</h2>
+                  <h2 className="text-[24px] font-serif text-rose-900 leading-tight">Serez-vous des nôtres ?</h2>
                   <p className="text-rose-800/60 font-light text-xs">Confirmez votre présence pour cette soirée inoubliable.</p>
                 </div>
 
@@ -255,7 +225,7 @@ export default function App() {
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="Votre nom complet"
-                      className="w-full px-5 py-3 bg-white/50 border border-rose-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-rose-400 transition-all placeholder:text-rose-300 text-sm"
+                      className="w-full px-5 py-3 bg-white/50 border border-rose-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-rose-400 transition-all text-sm"
                     />
                     
                     <textarea
@@ -263,7 +233,7 @@ export default function App() {
                       onChange={(e) => setMessage(e.target.value)}
                       placeholder="Un petit mot pour Vanessa ? (Optionnel)"
                       rows={2}
-                      className="w-full px-5 py-3 bg-white/50 border border-rose-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-rose-400 transition-all placeholder:text-rose-300 resize-none text-sm"
+                      className="w-full px-5 py-3 bg-white/50 border border-rose-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-rose-400 text-sm"
                     />
                   </div>
 
@@ -274,15 +244,11 @@ export default function App() {
                       "w-full py-3.5 rounded-full font-medium transition-all flex items-center justify-center gap-2 shadow-lg text-sm",
                       isSubmitting 
                         ? "bg-rose-200 text-rose-400 cursor-not-allowed" 
-                        : "bg-rose-900 text-white hover:bg-rose-800 active:scale-95"
+                        : "bg-rose-900 text-white hover:bg-rose-800"
                     )}
                   >
                     {isSubmitting ? (
-                      <motion.div
-                        animate={{ rotate: 360 }}
-                        transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
-                        className="w-5 h-5 border-2 border-rose-400 border-t-transparent rounded-full"
-                      />
+                      <div className="w-5 h-5 border-2 border-rose-400 border-t-transparent rounded-full animate-spin" />
                     ) : (
                       <>Confirmer ma présence <Check className="w-5 h-5" /></>
                     )}
@@ -293,7 +259,7 @@ export default function App() {
                   <button 
                     type="button"
                     onClick={(e) => handleConfirm(e as any, false)}
-                    className="text-rose-900/40 text-[14px] font-medium hover:text-rose-900 transition-all hover:underline underline-offset-4"
+                    className="text-rose-900/40 text-[14px] font-medium hover:text-rose-900 transition-all hover:underline"
                   >
                     Je ne pourrai malheureusement pas être présent(e)
                   </button>
@@ -322,43 +288,28 @@ export default function App() {
               <p className="text-rose-800/70">
                 {isAttending 
                   ? "Votre présence est confirmée. Préparez votre plus belle tenue !" 
-                  : "Votre réponse a bien été prise en compte. Vous nous manquerez !"}
+                  : "Votre réponse a bien été prise en compte."}
               </p>
             </div>
-
-            {isAttending && (
-              <div className="pt-6">
-                <button 
-                  onClick={() => window.open('https://calendar.google.com', '_blank')}
-                  className="text-rose-900 font-medium flex items-center justify-center gap-2 mx-auto hover:underline"
-                >
-                  Ajouter au calendrier <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            )}
           </motion.div>
-        )}
-        {/* Fallback if state is unknown */}
-        {!['video', 'confirmation', 'success'].includes(state) && state !== 'admin' && (
-          <div className="text-rose-900/40">Chargement...</div>
         )}
       </AnimatePresence>
 
-      {/* Footer Branding */}
-      <footer 
-        onClick={() => {
-          const newCount = adminClickCount + 1;
-          setAdminClickCount(newCount);
-          if (newCount >= 5) {
-            setState('admin');
-            setAdminClickCount(0);
-          }
-        }}
-        className="fixed bottom-8 text-rose-900/30 text-xs tracking-widest uppercase font-medium cursor-default select-none" 
-        style={{ marginTop: '0px', paddingLeft: '1px', paddingTop: '0px' }}
-      >
-        Vanessa Mocha • 40 Years of Magic
+      <footer className="fixed bottom-6 flex flex-col items-center gap-3">
+        <span className="text-rose-900/30 text-[10px] tracking-widest uppercase font-medium">
+          Vanessa Mocha • 40 Years of Magic
+        </span>
       </footer>
     </div>
   );
 }
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<InvitationPage />} />
+      <Route path="/Admin" element={<Admin onBack={() => window.history.back()} />} />
+    </Routes>
+  );
+}
+

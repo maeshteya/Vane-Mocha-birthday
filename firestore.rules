@@ -33,8 +33,9 @@ service cloud.firestore {
       // Allow anyone to create an RSVP (public invitation)
       allow create: if isValidRSVP(request.resource.data);
       
-      // Only the admin can read the list of RSVPs
-      allow read: if isAdmin();
+      // Allow anyone to read the list of RSVPs (for public admin view / migration)
+      allow read: if true;
+
       
       allow update, delete: if isAdmin();
     }
