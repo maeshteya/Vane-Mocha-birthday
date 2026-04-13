@@ -7,15 +7,12 @@ import {
   CheckCircle2, 
   XCircle, 
   TrendingUp, 
-  LogOut, 
-  Search, 
   Download,
-  LayoutGrid,
-  List,
-  BarChart3,
-  Mail,
   Database,
-  MessageSquare
+  Mail,
+  RefreshCw,
+  LayoutGrid,
+  List
 } from 'lucide-react';
 import { cn } from './lib/utils';
 
@@ -37,9 +34,8 @@ interface AdminProps {
 export default function Admin({ onBack }: AdminProps) {
   const [rsvps, setRsvps] = useState<RSVP[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [filter, setFilter] = useState<'all' | 'present' | 'absent'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [showMobileStats, setShowMobileStats] = useState(false);
   const [activeToast, setActiveToast] = useState<{name: string, attending: boolean} | null>(null);
 
   const fetchData = async () => {
@@ -53,352 +49,264 @@ export default function Admin({ onBack }: AdminProps) {
       if (error) throw error;
       setRsvps(data || []);
     } catch (err) {
-      console.error('Erreur lors du chargement:', err);
+      console.error('Erreur:', err);
     } finally {
       setLoading(false);
     }
   };
 
+  const exportToCSV = () => {
+    const headers = ["Nom", "Email", "Statut", "Adultes", "Message", "Date"];
+    const rows = rsvps.map(r => [
+      `"${r.name.replace(/"/g, '""')}"`,
+      `"${(r.email || "N/A").replace(/"/g, '""')}"`,
+      `"${r.is_attending ? "Présent" : "Absent"}"`,
+      r.adult_count || 1,
+      `"${(r.message || "").replace(/"/g, '""')}"`,
+      `"${new Date(r.created_at).toLocaleString()}"`
+    ]);
+    const csvContent = "\uFEFF" + [headers, ...rows].map(e => e.join(";")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `invites_vane_mocha_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   useEffect(() => {
     fetchData();
-
-    // Demander la permission pour les notifications Push au chargement
-    if ("Notification" in window) {
-      if (Notification.permission !== "granted" && Notification.permission !== "denied") {
-        Notification.requestPermission();
-      }
-    }
-
     const channel = supabase
       .channel('admin-changes')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'rsvps' 
-      }, (payload) => {
-        console.log("Mise à jour reçue !", payload);
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rsvps' }, (payload) => {
         fetchData();
-        
         if (payload.eventType === 'INSERT') {
           const newGuest = payload.new as RSVP;
-          
-          // 1. Notification Sonore
           new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play().catch(() => {});
-
-          // 2. Toast Interne
           setActiveToast({ name: newGuest.name, attending: newGuest.is_attending });
-          
-          // 3. Vibration
-          if ("vibrate" in navigator) navigator.vibrate([100, 30, 100]);
-
-          // Fermeture automatique du toast
           setTimeout(() => setActiveToast(null), 5000);
-
-          // 4. Notification Push (Optionnelle, si supportée)
+          if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("Nouveau RSVP ! ✨", {
+              body: `${newGuest.name} vient de répondre.`,
+              icon: "/favicon.svg"
+            });
+          }
         }
       })
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  const filteredGuests = rsvps.filter(r => 
-    r.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (r.email && r.email.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
-
   const attendingCount = rsvps.filter(r => r.is_attending).length;
-  
-  const stats = [
-    { label: 'Total Invités', val: rsvps.length, icon: Users, color: 'text-rose-900', bg: 'bg-rose-50' },
-    { label: 'Présences', val: attendingCount, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Absences', val: rsvps.length - attendingCount, icon: XCircle, color: 'text-rose-500', bg: 'bg-rose-50' },
-    { label: 'Taux Réponse', val: rsvps.length > 0 ? `${Math.round((attendingCount/rsvps.length)*100)}%` : '0%', icon: TrendingUp, color: 'text-blue-600', bg: 'bg-blue-50' }
-  ];
+  const filteredGuests = rsvps.filter(r => {
+    if (filter === 'present') return r.is_attending;
+    if (filter === 'absent') return !r.is_attending;
+    return true;
+  });
 
   return (
-    <div className="min-h-screen bg-[#fdf2f8] text-rose-950 p-6 sm:p-12 relative overflow-x-hidden pt-28 md:pt-12">
-      {/* Toast de Notification */}
+    <div className="min-h-screen bg-[#fff1f2] text-[#831843] p-6 md:p-12 font-sans overflow-x-hidden">
+      {/* Toast Notification */}
       <AnimatePresence>
         {activeToast && (
           <motion.div
             initial={{ y: -100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: -100, opacity: 0 }}
-            className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] w-[90%] max-w-md"
+            className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] w-[90%] max-w-sm"
           >
             <div className={cn(
-              "p-4 rounded-3xl border shadow-2xl flex items-center gap-4 backdrop-blur-md",
-              activeToast.attending 
-                ? "bg-emerald-500/90 border-emerald-400 text-white" 
-                : "bg-rose-500/90 border-rose-400 text-white"
+              "p-4 rounded-3xl border shadow-xl flex items-center justify-center backdrop-blur-md text-white font-serif italic",
+              activeToast.attending ? "bg-[#831843]/90 border-rose-400" : "bg-rose-500/90 border-rose-400"
             )}>
-              <div className="bg-white/20 p-3 rounded-2xl">
-                {activeToast.attending ? <CheckCircle2 className="w-6 h-6" /> : <XCircle className="w-6 h-6" />}
-              </div>
-              <div className="flex-1">
-                <p className="text-[10px] font-bold uppercase tracking-widest opacity-80">Nouvelle Réponse !</p>
-                <p className="font-serif text-lg leading-tight">
-                  <span className="font-bold">{activeToast.name}</span> {activeToast.attending ? "sera présent(e) !" : "ne peut pas venir"}
+                <p className="text-center font-serif text-lg leading-tight tracking-wide">
+                    <span className="font-bold">{activeToast.name}</span> vient de confirmer !
                 </p>
-              </div>
-              <button 
-                onClick={() => setActiveToast(null)}
-                className="p-2 hover:bg-white/20 rounded-xl transition-all"
-              >
-                <XCircle className="w-5 h-5" />
-              </button>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Background decoration */}
-      <div className="fixed inset-0 -z-10 bg-[#fdf2f8]">
-        <div className="absolute top-[-5%] right-[-5%] w-[50%] h-[50%] bg-pink-200/40 rounded-full blur-[120px]" />
-        <div className="absolute bottom-[-5%] left-[-5%] w-[50%] h-[50%] bg-rose-200/40 rounded-full blur-[120px]" />
-      </div>
-
-      <div className="max-w-6xl mx-auto space-y-10 relative z-10">
-        {/* Navigation bar */}
-        <header className="flex items-center justify-between mb-10">
-          <div className="flex items-center gap-4">
+      <div className="max-w-6xl mx-auto py-4">
+        {/* Header Section */}
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+          <div className="flex items-center gap-5">
             <button 
               onClick={onBack || (() => window.history.back())}
-              className="p-3 bg-white/70 rounded-2xl text-rose-900 border border-rose-200/60 hover:bg-white transition-all shadow-sm"
+              className="p-3 bg-white/70 rounded-2xl border border-rose-200 hover:bg-white transition-all shadow-sm"
             >
-              <ChevronLeft className="w-6 h-6" />
+              <ChevronLeft className="w-5 h-5" />
             </button>
             <div>
-              <h1 className="text-3xl font-serif text-rose-950 leading-tight">Vane's Dashboard</h1>
-              <p className="text-rose-900/40 text-[10px] font-bold uppercase tracking-[0.2em]">Gestion des Invitations</p>
+              <h1 className="text-3xl md:text-5xl font-serif mb-1">Tableau de Bord</h1>
+              <p className="text-[#831843]/40 text-[9px] font-bold uppercase tracking-[0.3em]">Vanessa Mocha • 40 Ans</p>
             </div>
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 self-end md:self-auto">
+             <div className="flex bg-white/40 p-1 rounded-xl border border-rose-100 mr-2">
+                <button 
+                    onClick={() => setViewMode('grid')}
+                    className={cn("p-2 rounded-lg transition-all", viewMode === 'grid' ? "bg-[#831843] text-white shadow-md" : "text-[#831843]/40")}
+                >
+                    <LayoutGrid className="w-4 h-4" />
+                </button>
+                <button 
+                    onClick={() => setViewMode('list')}
+                    className={cn("p-2 rounded-lg transition-all", viewMode === 'list' ? "bg-[#831843] text-white shadow-md" : "text-[#831843]/40")}
+                >
+                    <List className="w-4 h-4" />
+                </button>
+            </div>
             <button 
-              onClick={() => {
-                // Test Son
-                new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play()
-                  .then(() => console.log("Son OK"))
-                  .catch(e => console.error("Erreur Son:", e));
-                
-                // Test Notification
-                if ("Notification" in window) {
-                  Notification.requestPermission().then(permission => {
-                    if (permission === "granted") {
-                      new Notification("Test de Notification ✨", {
-                        body: "Si vous voyez ceci, les notifications Push fonctionnent !",
-                        icon: "/favicon.svg"
-                      });
-                    } else {
-                      alert("Permission de notification refusée : " + permission);
-                    }
-                  });
-                }
-              }}
-              className="p-4 rounded-2xl bg-white/70 border border-blue-200/60 text-blue-900/60 hover:bg-blue-50 transition-all flex items-center gap-2"
-              title="Tester les notifications"
+                onClick={fetchData}
+                className="flex items-center gap-2 px-5 py-3 bg-[#831843] text-white rounded-2xl hover:bg-[#a21d54] transition-all font-medium text-[10px] uppercase tracking-widest shadow-lg shadow-[#831843]/20"
             >
-              <MessageSquare className="w-6 h-6" />
-              <span className="text-xs font-bold hidden md:inline">TEST NOTIF</span>
+              <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
+              <span>Actualiser</span>
             </button>
-            <button 
-              onClick={() => setShowMobileStats(!showMobileStats)}
-              className="md:hidden p-4 rounded-2xl bg-white/70 border border-rose-200/60 text-rose-900/60 hover:bg-white transition-all"
+             <button 
+                onClick={exportToCSV}
+                className="p-3.5 bg-white/70 border border-rose-200 rounded-2xl hover:bg-white transition-all shadow-sm"
+                title="Exporter Excel"
             >
-              <BarChart3 className="w-6 h-6" />
-            </button>
-            <button className="p-4 rounded-2xl bg-white/70 border border-rose-200/60 text-rose-900/60 hover:text-rose-600 hover:bg-white transition-all">
-              <LogOut className="w-6 h-6" />
+              <Download className="w-4 h-4" />
             </button>
           </div>
         </header>
 
-        {/* Stats view */}
-        <div className={cn(
-          "grid grid-cols-1 md:grid-cols-4 gap-4 mb-12 transition-all",
-          showMobileStats ? "grid" : "hidden md:grid"
-        )}>
-          {stats.map((stat, i) => (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-              key={stat.label}
-              className="bg-white/70 border border-rose-200/60 p-6 rounded-[2rem] flex items-center justify-between shadow-sm"
-            >
+        {/* Stats Section - Hidden on mobile */}
+        <div className="hidden sm:grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+          {[
+            { label: 'Total Invités', val: rsvps.length, icon: Users, color: 'text-[#831843]', bg: 'bg-[#831843]/5' },
+            { label: 'Présences', val: attendingCount, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+            { label: 'Absences', val: rsvps.length - attendingCount, icon: XCircle, color: 'text-rose-500', bg: 'bg-rose-50' },
+            { label: 'Taux Réponse', val: rsvps.length > 0 ? `${Math.round((attendingCount/rsvps.length)*100)}%` : '0%', icon: TrendingUp, color: 'text-blue-600', bg: 'bg-blue-50' }
+          ].map((stat) => (
+            <div key={stat.label} className="bg-white/70 border border-rose-100 p-6 rounded-[2.5rem] flex items-center justify-between shadow-sm">
               <div>
-                <p className="text-[10px] font-bold uppercase text-rose-900/40 tracking-widest mb-1">{stat.label}</p>
+                <p className="text-[9px] font-bold uppercase text-[#831843]/30 tracking-widest mb-1.5">{stat.label}</p>
                 <p className={cn("text-3xl font-serif", stat.color)}>{stat.val}</p>
               </div>
-              <div className={cn("p-4 rounded-2xl", stat.bg)}>
-                <stat.icon className={cn("w-6 h-6", stat.color)} />
+              <div className={cn("p-3.5 rounded-full", stat.bg)}>
+                <stat.icon className={cn("w-5 h-5", stat.color)} />
               </div>
-            </motion.div>
+            </div>
           ))}
         </div>
 
-        {/* Filters and View controls */}
-        <div className="flex flex-col md:flex-row gap-6 mb-8 items-center bg-white/30 p-4 rounded-[2.5rem] border border-rose-100/50">
-          <div className="relative flex-1 w-full">
-            <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-rose-300 w-5 h-5" />
-            <input 
-              type="text" 
-              placeholder="Rechercher un nom..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-14 pr-6 py-4 bg-white/70 border border-rose-200/60 rounded-2xl focus:outline-none focus:ring-2 focus:ring-rose-200 text-rose-950 placeholder-rose-300 transition-all font-medium"
-            />
-          </div>
-          
-          <div className="flex items-center gap-3 w-full md:w-auto">
-            <div className="flex bg-rose-100/30 p-1 rounded-xl border border-rose-200/30 shrink-0">
-              <button 
-                onClick={() => setViewMode('grid')}
-                className={cn(
-                  "p-2 px-4 rounded-lg transition-all",
-                  viewMode === 'grid' ? "bg-white text-rose-600 shadow-sm" : "text-rose-400 hover:text-rose-600"
-                )}
-              >
-                <LayoutGrid className="w-5 h-5" />
-              </button>
-              <button 
-                onClick={() => setViewMode('list')}
-                className={cn(
-                  "p-2 px-4 rounded-lg transition-all",
-                  viewMode === 'list' ? "bg-white text-rose-600 shadow-sm" : "text-rose-400 hover:text-rose-600"
-                )}
-              >
-                <List className="w-5 h-5" />
-              </button>
+        {/* Filters */}
+        <div className="flex justify-center mb-10">
+            <div className="bg-white/40 p-1.5 rounded-2xl border border-rose-100/50 flex gap-1">
+                {['all', 'present', 'absent'].map((f) => (
+                    <button
+                        key={f}
+                        onClick={() => setFilter(f as any)}
+                        className={cn(
+                            "px-6 py-2 rounded-xl text-[9px] font-bold uppercase tracking-widest transition-all",
+                            filter === f ? "bg-[#831843] text-white shadow-md shadow-[#831843]/20" : "text-[#831843]/40 hover:text-[#831843]"
+                        )}
+                    >
+                        {f === 'all' ? 'Tous' : f === 'present' ? 'Présents' : 'Absents'}
+                    </button>
+                ))}
             </div>
-            
-            <button className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-4 bg-rose-600 text-white rounded-2xl hover:bg-rose-700 transition-all font-medium text-sm shadow-md active:scale-95">
-              <Download className="w-5 h-5" />
-              <span className="md:hidden lg:inline">Export</span>
-            </button>
-          </div>
         </div>
 
-        {/* Content area */}
-        {loading ? (
-          <div className="flex justify-center py-20">
-            <div className="flex flex-col items-center gap-4">
-              <div className="w-8 h-8 border-4 border-rose-200 border-t-rose-600 rounded-full animate-spin" />
-              <p className="font-serif italic text-rose-300">Récupération des réponses...</p>
-            </div>
+        {/* Content Section */}
+        {loading && rsvps.length === 0 ? (
+          <div className="flex justify-center py-20 opacity-30">
+            <div className="animate-pulse font-serif italic text-lg tracking-widest text-[#831843]">Charmante attente...</div>
           </div>
         ) : (
-          <div className="min-h-[400px]">
+          <AnimatePresence mode="popLayout">
             {viewMode === 'grid' ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 px-1">
-                <AnimatePresence>
-                  {filteredGuests.map((guest) => (
-                    <motion.div
-                      key={guest.id}
-                      layout
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="bg-white/70 border border-rose-200/60 rounded-[2rem] p-7 flex flex-col justify-between group hover:border-rose-400/50 transition-all duration-300 shadow-sm overflow-hidden"
-                    >
-                      <div className="space-y-5">
-                        <div className="flex justify-between items-start">
-                          <span className={cn(
-                            "px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest border",
-                            guest.is_attending 
-                              ? "bg-emerald-50 text-emerald-600 border-emerald-100" 
-                              : "bg-rose-50 text-rose-600 border-rose-100"
-                          )}>
-                            {guest.is_attending ? 'PRÉSENT' : 'ABSENT'}
-                          </span>
-                          <div className="flex items-center gap-1 text-[10px] font-bold text-rose-900/20 uppercase">
-                            {guest.source === 'firebase' ? <Database className="w-3 h-3" /> : <Mail className="w-3 h-3" />}
-                          </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-20 px-1">
+                {filteredGuests.map((guest) => (
+                  <motion.div
+                    key={guest.id}
+                    layout
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="bg-[#fff8f9] border border-rose-200/50 rounded-[2.5rem] p-8 flex flex-col justify-between shadow-sm hover:border-[#831843]/30 transition-all duration-300 relative overflow-hidden group"
+                  >
+                    <div className="space-y-4">
+                      <div>
+                        <h3 className="text-3xl font-serif text-[#831843] leading-tight mb-2 tracking-tight uppercase">{guest.name}</h3>
+                        <div className="flex items-center gap-2">
+                             <div className={cn("w-1.5 h-1.5 rounded-full", guest.is_attending ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]" : "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.3)]")} />
+                             <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#831843]/50">
+                                {guest.is_attending ? 'SERA PRÉSENTE' : 'INSCRIPTION ABSENTE'}
+                             </span>
                         </div>
-                        <div>
-                          <h3 className="text-2xl font-serif text-rose-950 mb-1 leading-tight group-hover:text-rose-600 transition-colors">{guest.name}</h3>
-                          <p className="text-rose-900/40 text-[10px] font-medium uppercase tracking-wider truncate">
-                            {guest.email || "Non renseigné"}
-                          </p>
-                        </div>
-                        
-                        {guest.message && (
-                          <div className="bg-rose-50/50 rounded-xl p-3 border border-rose-100/50">
-                            <p className="text-[11px] italic text-rose-900/70 border-l-2 border-rose-200 pl-3 leading-relaxed line-clamp-3">
-                              "{guest.message}"
-                            </p>
-                          </div>
-                        )}
                       </div>
 
-                      <div className="mt-8 pt-6 border-t border-rose-100/50 flex items-center justify-between">
-                        <div>
-                          <p className="text-[9px] font-bold text-rose-900/20 uppercase tracking-widest mb-1">Adultes</p>
-                          <span className="text-lg font-serif text-rose-900 italic font-medium">{guest.adult_count || 1}</span>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-serif text-[10px] text-rose-300 italic">
-                            {new Date(guest.created_at).toLocaleDateString()}
-                          </p>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-                {filteredGuests.length === 0 && (
-                  <div className="col-span-full text-center py-20 bg-white/20 rounded-[2rem] border border-dashed border-rose-200">
-                    <p className="font-serif italic text-rose-400">Aucun résultat pour cette recherche.</p>
-                  </div>
-                )}
+                      {guest.message && (
+                          <div className="bg-[#fff1f2]/60 rounded-[1.5rem] p-5 border border-rose-100/50 mt-4 relative">
+                              <p className="text-[13px] italic text-[#831843]/80 leading-relaxed font-medium">
+                                  "{guest.message}"
+                              </p>
+                          </div>
+                      )}
+                    </div>
+
+                    <div className="mt-8 flex items-center justify-between border-t border-rose-100/30 pt-5">
+                       <div className="flex items-center gap-2 text-[#831843]/30">
+                          {guest.source === 'firebase' ? <Database className="w-3.5 h-3.5" /> : <Mail className="w-3.5 h-3.5" />}
+                          <span className="text-[9px] font-bold uppercase tracking-widest">{guest.source || 'SUPABASE'}</span>
+                       </div>
+                       <span className="font-serif text-[11px] text-[#831843]/40 italic">
+                          {new Date(guest.created_at).toLocaleDateString()}
+                       </span>
+                    </div>
+                  </motion.div>
+                ))}
               </div>
             ) : (
-              <div className="bg-white/70 border border-rose-200/60 rounded-[2.5rem] overflow-hidden shadow-sm">
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse">
+              <div className="bg-white/70 border border-rose-100 rounded-[2.5rem] overflow-hidden shadow-sm mb-20 anim-fade-in">
+                <table className="w-full border-collapse">
                     <thead>
-                      <tr className="bg-rose-50/50">
-                        <th className="px-8 py-5 text-left text-[10px] font-bold text-rose-900/40 uppercase tracking-widest">Invité</th>
-                        <th className="px-8 py-5 text-center text-[10px] font-bold text-rose-900/40 uppercase tracking-widest">Statut</th>
-                        <th className="px-8 py-5 text-center text-[10px] font-bold text-rose-900/40 uppercase tracking-widest">Adultes</th>
-                        <th className="px-8 py-5 text-right text-[10px] font-bold text-rose-900/40 uppercase tracking-widest">Date</th>
-                      </tr>
+                        <tr className="bg-[#831843] text-white">
+                            <th className="px-8 py-4 text-left text-[9px] font-bold uppercase tracking-[0.2em] opacity-80">Invité</th>
+                            <th className="px-8 py-4 text-center text-[9px] font-bold uppercase tracking-[0.2em] opacity-80">Statut</th>
+                            <th className="px-8 py-4 text-center text-[9px] font-bold uppercase tracking-[0.2em] opacity-80">Adultes</th>
+                            <th className="px-8 py-4 text-right text-[9px] font-bold uppercase tracking-[0.2em] opacity-80">Date</th>
+                        </tr>
                     </thead>
                     <tbody>
-                      {filteredGuests.map((guest) => (
-                        <tr key={guest.id} className="border-t border-rose-100/30 hover:bg-rose-50/50 transition-colors group">
-                          <td className="px-8 py-5">
-                            <div className="font-serif text-lg text-rose-950 group-hover:text-rose-600 transition-colors">{guest.name}</div>
-                            <div className="text-[10px] text-rose-900/30 font-medium uppercase tracking-wider">{guest.email || "—"}</div>
-                          </td>
-                          <td className="px-8 py-5 text-center">
-                            <span className={cn(
-                              "px-3 py-1 rounded-full text-[9px] font-bold",
-                              guest.is_attending ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
-                            )}>
-                              {guest.is_attending ? 'PRÉSENT' : 'ABSENT'}
-                            </span>
-                          </td>
-                          <td className="px-8 py-5 text-center font-serif text-rose-900 italic text-lg">
-                            {guest.adult_count || 1}
-                          </td>
-                          <td className="px-8 py-5 text-right text-[10px] text-rose-300 italic">
-                            {new Date(guest.created_at).toLocaleDateString()}
-                          </td>
-                        </tr>
-                      ))}
+                        {filteredGuests.map((guest) => (
+                            <tr key={guest.id} className="border-b border-rose-50 hover:bg-rose-100/20 transition-colors">
+                                <td className="px-8 py-3.5">
+                                    <div className="font-serif text-xl text-[#831843] leading-tight">{guest.name}</div>
+                                    <div className="text-[9px] text-[#831843]/40 uppercase tracking-widest font-medium">{guest.email || 'Pas d\'email'}</div>
+                                </td>
+                                <td className="px-8 py-3.5 text-center">
+                                    <div className={cn(
+                                        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-wider",
+                                        guest.is_attending ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-rose-50 text-rose-600 border border-rose-100"
+                                    )}>
+                                        <div className={cn("w-1 h-1 rounded-full", guest.is_attending ? "bg-emerald-500" : "bg-rose-500")} />
+                                        {guest.is_attending ? 'Présent' : 'Absent'}
+                                    </div>
+                                </td>
+                                <td className="px-8 py-3.5 text-center font-serif text-[#831843]/70 italic text-lg">
+                                    {guest.adult_count || 1}
+                                </td>
+                                <td className="px-8 py-3.5 text-right font-serif text-[11px] text-[#831843]/40 italic leading-tight">
+                                    {new Date(guest.created_at).toLocaleDateString()}<br/>
+                                    {new Date(guest.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </td>
+                            </tr>
+                        ))}
                     </tbody>
-                  </table>
-                  {filteredGuests.length === 0 && (
-                    <div className="text-center py-20">
-                      <p className="font-serif italic text-rose-400">Aucun résultat pour cette recherche.</p>
-                    </div>
-                  )}
-                </div>
+                </table>
               </div>
             )}
-          </div>
+          </AnimatePresence>
         )}
       </div>
     </div>
