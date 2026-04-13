@@ -171,7 +171,7 @@ export default function Admin() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.1 }}
               key={stat.label}
-              className="bg-rose-50/80 border border-rose-200/70 p-6 rounded-[2rem] flex items-center justify-between"
+              className="bg-rose-50/40 border border-rose-200/70 p-6 rounded-[2rem] flex items-center justify-between"
             >
               <div>
                 <p className="text-[10px] font-bold uppercase text-rose-900/40 tracking-widest mb-1">{stat.label}</p>
@@ -214,7 +214,7 @@ export default function Admin() {
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                className="bg-rose-50/80 border border-rose-200/70 rounded-[2rem] p-7 flex flex-col justify-between group hover:border-rose-300 transition-all duration-300"
+                className="bg-rose-50/40 border border-rose-200/70 rounded-[2rem] p-7 flex flex-col justify-between group hover:border-rose-300 transition-all duration-300"
               >
                 <div className="space-y-5">
                   <div className="flex justify-between items-start">
