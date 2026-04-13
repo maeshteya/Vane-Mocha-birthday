@@ -140,7 +140,7 @@ export default function Admin() {
           <div className="flex items-center gap-6">
             <Link 
               to="/"
-              className="p-3 bg-white/40 backdrop-blur-md rounded-2xl text-rose-900 border border-white/60 hover:bg-white/60 transition-all shadow-sm"
+              className="p-3 bg-rose-100 rounded-2xl text-rose-900 border border-rose-200 hover:bg-rose-200/60 transition-all"
             >
               <ChevronLeft className="w-6 h-6" />
             </Link>
@@ -151,7 +151,7 @@ export default function Admin() {
           </div>
           <button 
             onClick={fetchData}
-            className="flex items-center gap-2 px-5 py-2.5 bg-rose-900 text-white rounded-full text-sm font-medium hover:bg-rose-800 transition-all shadow-md active:scale-95"
+            className="flex items-center gap-2 px-5 py-2.5 bg-rose-900 text-white rounded-full text-sm font-medium hover:bg-rose-800 transition-all active:scale-95"
           >
             <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
             Actualiser
@@ -171,13 +171,13 @@ export default function Admin() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.1 }}
               key={stat.label}
-              className="glass p-6 rounded-[2rem] flex items-center justify-between"
+              className="bg-rose-50/80 border border-rose-200/70 p-6 rounded-[2rem] flex items-center justify-between"
             >
               <div>
                 <p className="text-[10px] font-bold uppercase text-rose-900/40 tracking-widest mb-1">{stat.label}</p>
                 <p className={cn("text-3xl font-serif font-bold", stat.color)}>{stat.val}</p>
               </div>
-              <div className={cn("p-3 rounded-2xl bg-white/50 border border-white/80", stat.color)}>
+              <div className={cn("p-3 rounded-2xl bg-rose-100/80 border border-rose-200/60", stat.color)}>
                 <stat.icon className="w-6 h-6" />
               </div>
             </motion.div>
@@ -186,7 +186,7 @@ export default function Admin() {
 
         {/* Controls */}
         <div className="flex justify-center">
-          <div className="flex bg-white/40 backdrop-blur-sm p-1.5 rounded-2xl border border-white/60 shadow-sm">
+          <div className="flex bg-rose-50 p-1.5 rounded-2xl border border-rose-200/70">
             {(['all', 'present', 'absent'] as const).map((t) => (
               <button
                 key={t}
@@ -194,8 +194,8 @@ export default function Admin() {
                 className={cn(
                   "px-8 py-2 text-xs font-bold rounded-xl transition-all capitalize tracking-wider",
                   filter === t 
-                    ? "bg-rose-900 text-white shadow-lg" 
-                    : "text-rose-900/60 hover:text-rose-900 hover:bg-white/40"
+                    ? "bg-rose-900 text-white" 
+                    : "text-rose-900/60 hover:text-rose-900 hover:bg-rose-100"
                 )}
               >
                 {t === 'all' ? 'Tous' : t === 'present' ? 'Présents' : 'Absents'}
@@ -214,7 +214,7 @@ export default function Admin() {
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                className="glass rounded-[2rem] p-7 flex flex-col justify-between group hover:border-rose-300 transition-all duration-500"
+                className="bg-rose-50/80 border border-rose-200/70 rounded-[2rem] p-7 flex flex-col justify-between group hover:border-rose-300 transition-all duration-300"
               >
                 <div className="space-y-5">
                   <div className="flex justify-between items-start">
@@ -231,16 +231,16 @@ export default function Admin() {
                       </div>
                     </div>
                     <div className={cn(
-                      "p-2 rounded-xl bg-white/50 border",
-                      rsvp.is_attending ? "border-emerald-100 text-emerald-600" : "border-rose-100 text-rose-500"
+                      "p-2 rounded-xl bg-rose-100/60 border",
+                      rsvp.is_attending ? "border-emerald-200 text-emerald-600" : "border-rose-200 text-rose-500"
                     )}>
                       {rsvp.is_attending ? <CheckCircle2 className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
                     </div>
                   </div>
 
                   {rsvp.message ? (
-                    <div className="bg-white/30 rounded-2xl p-4 border border-white/40 relative">
-                      <MessageSquare className="w-4 h-4 text-rose-900/20 absolute -top-2 -left-2 bg-white rounded-full p-0.5" />
+                    <div className="bg-rose-100/50 rounded-2xl p-4 border border-rose-200/60 relative">
+                      <MessageSquare className="w-4 h-4 text-rose-900/20 absolute -top-2 -left-2 bg-rose-50 rounded-full p-0.5" />
                       <p className="text-sm italic text-rose-900/80 leading-relaxed font-light">"{rsvp.message}"</p>
                     </div>
                   ) : (
