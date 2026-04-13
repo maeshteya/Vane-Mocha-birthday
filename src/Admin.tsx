@@ -77,9 +77,44 @@ export default function Admin() {
     }
   };
 
+  const playNotificationSound = () => {
+    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+    audio.volume = 0.5;
+    audio.play().catch(e => console.log("Sound blocked by browser"));
+  };
+
   useEffect(() => {
+    // Demander la permission de notification au chargement
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+
     fetchData();
-    const channel = supabase.channel('rsvps-admin').on('postgres_changes', { event: '*', schema: 'public', table: 'rsvps' }, () => fetchData()).subscribe();
+
+    const channel = supabase
+      .channel('rsvps-admin')
+      .on('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'rsvps' 
+      }, (payload) => {
+        const newRSVP = payload.new as RSVP;
+        
+        // Notification sonore
+        playNotificationSound();
+
+        // Notification de navigateur
+        if (Notification.permission === "granted") {
+          new Notification("Nouvel Invité ! ✨", {
+            body: `${newRSVP.name} vient de répondre : ${newRSVP.is_attending ? 'Présent' : 'Absent'}`,
+            icon: '/favicon.svg'
+          });
+        }
+
+        fetchData();
+      })
+      .subscribe();
+
     return () => { supabase.removeChannel(channel); };
   }, []);
 
