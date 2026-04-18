@@ -12,9 +12,12 @@ import {
   Mail,
   RefreshCw,
   LayoutGrid,
-  List
+  List,
+  Trash2
 } from 'lucide-react';
 import { cn } from './lib/utils';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface RSVP {
   id: string;
@@ -38,6 +41,34 @@ export default function Admin({ onBack }: AdminProps) {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [activeToast, setActiveToast] = useState<{name: string, attending: boolean} | null>(null);
 
+  const deduplicateGuests = (items: RSVP[]): RSVP[] => {
+    const map = new Map<string, RSVP>();
+    items.forEach(item => {
+      const normalizedName = item.name.trim().toLowerCase();
+      const existing = map.get(normalizedName);
+      
+      if (!existing) {
+        map.set(normalizedName, item);
+      } else {
+        // Priorité à celui qui a un message
+        const existingHasMsg = existing.message && existing.message.trim().length > 0;
+        const currentHasMsg = item.message && item.message.trim().length > 0;
+        
+        if (!existingHasMsg && currentHasMsg) {
+          map.set(normalizedName, item);
+        } else if (existingHasMsg === currentHasMsg) {
+          // Si les deux ont (ou n'ont pas) un message, on prend le plus récent
+          if (new Date(item.created_at) > new Date(existing.created_at)) {
+            map.set(normalizedName, item);
+          }
+        }
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => 
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  };
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -47,7 +78,8 @@ export default function Admin({ onBack }: AdminProps) {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setRsvps(data || []);
+      const uniqueData = deduplicateGuests(data || []);
+      setRsvps(uniqueData);
     } catch (err) {
       console.error('Erreur:', err);
     } finally {
@@ -55,26 +87,58 @@ export default function Admin({ onBack }: AdminProps) {
     }
   };
 
-  const exportToCSV = () => {
-    const headers = ["Nom", "Email", "Statut", "Adultes", "Message", "Date"];
-    const rows = rsvps.map(r => [
-      `"${r.name.replace(/"/g, '""')}"`,
-      `"${(r.email || "N/A").replace(/"/g, '""')}"`,
-      `"${r.is_attending ? "Présent" : "Absent"}"`,
-      r.adult_count || 1,
-      `"${(r.message || "").replace(/"/g, '""')}"`,
-      `"${new Date(r.created_at).toLocaleString()}"`
+  const handleDelete = async (id: string, name: string) => {
+    if (window.confirm(`Voulez-vous vraiment supprimer la réponse de ${name} ?`)) {
+      setLoading(true);
+      try {
+        const { error } = await supabase.from('rsvps').delete().eq('id', id);
+        if (error) throw error;
+        setRsvps(prev => prev.filter(r => r.id !== id));
+      } catch (err) {
+        console.error('Erreur de suppression:', err);
+        alert('Erreur lors de la suppression');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const exportToPDF = () => {
+    const doc = new jsPDF();
+    
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(22);
+    doc.setTextColor(131, 24, 67);
+    doc.text("Liste des Invitations", 105, 20, { align: "center" });
+    
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text("Vanessa Mocha • 40 Ans", 105, 28, { align: "center" });
+
+    const sortedGuests = [...filteredGuests].sort((a, b) => 
+      a.name.localeCompare(b.name)
+    );
+
+    const tableData = sortedGuests.map((r, index) => [
+      (index + 1).toString(),
+      r.name
     ]);
-    const csvContent = "\uFEFF" + [headers, ...rows].map(e => e.join(";")).join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `invites_vane_mocha_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+
+    autoTable(doc, {
+      startY: 40,
+      head: [['#', 'Nom']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [131, 24, 67], fontStyle: 'bold' },
+      styles: { font: 'helvetica', fontSize: 11, cellPadding: 6 },
+      columnStyles: { 
+        0: { cellWidth: 20, halign: 'center' },
+        1: { cellWidth: 'auto' }
+      }
+    });
+
+    const dateStr = new Date().toLocaleDateString().replace(/\//g, '-');
+    doc.save(`invites_vane_mocha_${dateStr}.pdf`);
   };
 
   useEffect(() => {
@@ -169,9 +233,9 @@ export default function Admin({ onBack }: AdminProps) {
               <span>Actualiser</span>
             </button>
              <button 
-                onClick={exportToCSV}
+                onClick={exportToPDF}
                 className="p-3.5 bg-white/70 border border-rose-200 rounded-2xl hover:bg-white transition-all shadow-sm"
-                title="Exporter Excel"
+                title="Exporter PDF"
             >
               <Download className="w-4 h-4" />
             </button>
@@ -236,7 +300,14 @@ export default function Admin({ onBack }: AdminProps) {
                   >
                     <div className="space-y-4">
                       <div>
-                        <h3 className="text-3xl font-serif text-[#831843] leading-tight mb-2 tracking-tight uppercase">{guest.name}</h3>
+                          <button 
+                              onClick={() => handleDelete(guest.id, guest.name)}
+                              className="absolute top-6 right-6 p-2 rounded-full text-rose-300 hover:text-rose-600 hover:bg-rose-50 transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100 z-10"
+                              title="Supprimer l'invité"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                         </button>
+                        <h3 className="text-3xl font-serif text-[#831843] leading-tight mb-2 tracking-tight uppercase pr-10">{guest.name}</h3>
                         <div className="flex items-center gap-2">
                              <div className={cn("w-1.5 h-1.5 rounded-full", guest.is_attending ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]" : "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.3)]")} />
                              <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#831843]/50">
@@ -275,6 +346,7 @@ export default function Admin({ onBack }: AdminProps) {
                             <th className="px-8 py-4 text-center text-[9px] font-bold uppercase tracking-[0.2em] opacity-80">Statut</th>
                             <th className="px-8 py-4 text-center text-[9px] font-bold uppercase tracking-[0.2em] opacity-80">Adultes</th>
                             <th className="px-8 py-4 text-right text-[9px] font-bold uppercase tracking-[0.2em] opacity-80">Date</th>
+                            <th className="px-4 py-4 opacity-80 w-16"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -299,6 +371,15 @@ export default function Admin({ onBack }: AdminProps) {
                                 <td className="px-8 py-3.5 text-right font-serif text-[11px] text-[#831843]/40 italic leading-tight">
                                     {new Date(guest.created_at).toLocaleDateString()}<br/>
                                     {new Date(guest.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </td>
+                                <td className="px-4 py-3.5 text-right w-16">
+                                    <button 
+                                         onClick={() => handleDelete(guest.id, guest.name)}
+                                         className="p-2 text-rose-300 hover:text-rose-600 hover:bg-rose-100 rounded-full transition-all"
+                                         title="Supprimer l'invité"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
                                 </td>
                             </tr>
                         ))}

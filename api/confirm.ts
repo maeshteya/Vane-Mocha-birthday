@@ -33,55 +33,94 @@ export default async function handler(req: any, res: any) {
 
   try {
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    const clientIp = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
 
-    console.log("Tentative d'insertion Supabase...");
-    const { error: rsvpError } = await supabase
+    console.log("Vérification pour:", { name, clientIp });
+    
+    // 1. Vérifier si le nom existe déjà
+    const { data: existingRSVPs } = await supabase
       .from('rsvps')
-      .insert([{ name, message: message || '', is_attending: isAttending }]);
+      .select('*')
+      .eq('name', name);
 
-    if (rsvpError) {
-      console.error("Erreur Supabase detail:", rsvpError);
-      return res.status(500).json({ success: false, error: "Erreur Supabase: " + rsvpError.message });
+    const existingEntry = existingRSVPs && existingRSVPs.length > 0 ? existingRSVPs[0] : null;
+
+    if (existingEntry) {
+      console.log("Mise à jour pour:", name);
+      const finalMessage = message || existingEntry.message || '';
+      
+      const { error: updateError } = await supabase
+        .from('rsvps')
+        .update({ 
+          message: finalMessage, 
+          is_attending: isAttending,
+          ip: clientIp 
+        })
+        .eq('id', existingEntry.id);
+
+      if (updateError) throw updateError;
+    } else {
+      // 2. Vérification optionnelle par IP pour éviter le spam (un seul nom par IP)
+      // Si vous voulez être très strict :
+      /*
+      const { data: ipCheck } = await supabase.from('rsvps').select('id').eq('ip', clientIp);
+      if (ipCheck && ipCheck.length > 0) {
+        return res.status(403).json({ success: false, error: "Cet appareil a déjà envoyé une réponse." });
+      }
+      */
+
+      console.log("Nouvelle insertion pour:", name);
+      const { error: insertError } = await supabase
+        .from('rsvps')
+        .insert([{ 
+          name, 
+          message: message || '', 
+          is_attending: isAttending,
+          ip: clientIp 
+        }]);
+
+      if (insertError) throw insertError;
     }
-    console.log("Insertion Supabase réussie !");
+    console.log("Opération Supabase réussie !");
 
     if (resendApiKey) {
-      console.log("Envoi de l'email via Resend...");
-      const resend = new Resend(resendApiKey);
-      const subject = isAttending 
-        ? `${name} a confirmé sa présence !` 
-        : `${name} ne pourra pas venir`;
-      
-      const host = req.headers.host;
-      const origin = host ? `https://${host}` : '';
+      try {
+        console.log("Envoi de l'email via Resend...");
+        const resend = new Resend(resendApiKey);
+        const subject = isAttending 
+          ? `${name} a confirmé sa présence !` 
+          : `${name} ne pourra pas venir`;
+        
+        const host = req.headers.host;
+        const origin = host ? `https://${host}` : '';
 
-      const emailResult = await resend.emails.send({
-        from: 'onboarding@resend.dev',
-        to: ['Vanessaelebe2@gmail.com', 'teyadesigner@gmail.com'],
-        bcc: 'maeshteya@gmail.com',
-        subject: subject,
-        html: `
-          <div style="font-family: 'Playfair Display', serif; color: #4a041a; max-width: 600px; margin: auto; padding: 30px; border: 1px solid #fce7f3; border-radius: 24px; background-color: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
-            <h2 style="color: #831843; border-bottom: 1px solid #fce7f3; padding-bottom: 15px; text-align: center; font-size: 24px;">Réponse à ton Invitation</h2>
-            <p style="font-size: 16px; line-height: 1.6;">Coucou Vanessa,</p>
-            <p style="font-size: 16px; line-height: 1.6;"><strong>${name}</strong> vient de répondre à l'invitation.</p>
-            <div style="background-color: #fff1f2; padding: 20px; border-radius: 16px; margin: 25px 0; text-align: center;">
-              <p style="margin: 0; font-size: 18px; color: #9f1239; font-weight: 600;">
-                ${isAttending ? '✨ Sera présent(e) !' : '😔 Ne pourra pas être présent(e)'}
-              </p>
+        const { data, error: emailError } = await resend.emails.send({
+          from: 'onboarding@resend.dev',
+          to: ['Vanessaelebe2@gmail.com'], // On teste avec une seule pour commencer
+          cc: ['teyadesigner@gmail.com'],
+          bcc: ['maeshteya@gmail.com'],
+          subject: subject,
+          html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px;">
+              <h2>Nouvelle réponse RSVP</h2>
+              <p><strong>${name}</strong> a répondu : <strong>${isAttending ? 'PRÉSENT' : 'ABSENT'}</strong></p>
+              ${message ? `<p>Message : <i>"${message}"</i></p>` : ''}
+              <hr />
+              <p><a href="${origin}/Admin">Voir la liste complète</a></p>
             </div>
-            ${message ? `<p><i>"${message}"</i></p>` : ''}
-            <div style="margin-top: 35px; text-align: center;">
-              <a href="${origin}/Admin" style="background-color: #831843; color: #ffffff; padding: 14px 28px; border-radius: 50px; text-decoration: none; font-weight: bold;">
-                Voir toute la liste d'invités
-              </a>
-            </div>
-          </div>
-        `,
-      });
-      console.log("Résultat Resend:", emailResult);
+          `,
+        });
+
+        if (emailError) {
+          console.error("Détails de l'erreur Resend:", emailError);
+        } else {
+          console.log("Email envoyé avec succès ! ID:", data?.id);
+        }
+      } catch (err: any) {
+        console.error("Exception lors de l'envoi Resend:", err.message);
+      }
     } else {
-      console.warn("Attention: RESEND_API_KEY manquante, email non envoyé.");
+      console.warn("Attention: RESEND_API_KEY manquante sur Vercel.");
     }
 
     return res.status(200).json({ success: true });

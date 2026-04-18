@@ -16,8 +16,18 @@ import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom'
 type AppState = 'video' | 'confirmation' | 'success';
 
 function InvitationPage() {
-  const [state, setState] = useState<AppState>('video');
-  const [name, setName] = useState('');
+  const [state, setState] = useState<AppState>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('vane_rsvp_submitted') === 'true' ? 'success' : 'video';
+    }
+    return 'video';
+  });
+  const [name, setName] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('vane_rsvp_name') || '';
+    }
+    return '';
+  });
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAttending, setIsAttending] = useState(true);
@@ -111,6 +121,8 @@ function InvitationPage() {
       const result = await response.json();
 
       if (response.ok && result.success) {
+        localStorage.setItem('vane_rsvp_submitted', 'true');
+        localStorage.setItem('vane_rsvp_name', name);
         setState('success');
       } else {
         alert("Désolé, une erreur est survenue lors de l'enregistrement.");
