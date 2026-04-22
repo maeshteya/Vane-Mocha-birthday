@@ -13,7 +13,8 @@ import {
   RefreshCw,
   LayoutGrid,
   List,
-  Trash2
+  Trash2,
+  Image as ImageIcon
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import jsPDF from 'jspdf';
@@ -226,11 +227,12 @@ export default function Admin({ onBack }: AdminProps) {
                 </button>
             </div>
             <button 
-                onClick={fetchData}
+                onClick={() => window.location.href = '/galerie'}
                 className="flex items-center gap-2 px-5 py-3 bg-[#831843] text-white rounded-2xl hover:bg-[#a21d54] transition-all font-medium text-[10px] uppercase tracking-widest shadow-lg shadow-[#831843]/20"
+                title="Voir la galerie photo"
             >
-              <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
-              <span>Actualiser</span>
+              <ImageIcon className="w-3.5 h-3.5" />
+              <span>Galerie</span>
             </button>
              <button 
                 onClick={exportToPDF}
