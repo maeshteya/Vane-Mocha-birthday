@@ -6,11 +6,13 @@
 import { useState, useRef, FormEvent, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Check, Calendar, MapPin, Music, Heart, Play, ChevronRight, ChevronLeft, List } from 'lucide-react';
+import { Check, Calendar, MapPin, Music, Heart, Play, ChevronRight, ChevronLeft, List, Camera, Image as ImageIcon } from 'lucide-react';
 import { cn } from './lib/utils';
 import Player from '@vimeo/player';
 import Admin from './Admin';
-import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
+import Photos from './Upload';
+import Gallery from './Gallery';
+import { Routes, Route, useNavigate } from 'react-router-dom';
 
 // Types
 type AppState = 'video' | 'confirmation' | 'success';
@@ -321,6 +323,8 @@ export default function App() {
     <Routes>
       <Route path="/" element={<InvitationPage />} />
       <Route path="/Admin" element={<Admin onBack={() => window.history.back()} />} />
+      <Route path="/photo" element={<Photos />} />
+      <Route path="/Galerie" element={<Gallery />} />
     </Routes>
   );
 }
