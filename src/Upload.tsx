@@ -23,25 +23,27 @@ interface Photo {
 export default function Photos() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [userIp, setUserIp] = useState<string>('');
+  const [deviceId, setDeviceId] = useState<string>('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 1. Récupérer l'IP de l'utilisateur
+  // 1. Récupérer ou créer un ID d'appareil unique
   useEffect(() => {
-    fetch('https://api.ipify.org?format=json')
-      .then(res => res.json())
-      .then(data => setUserIp(data.ip))
-      .catch(err => console.error("Erreur IP:", err));
+    let storedId = localStorage.getItem('vane_device_id');
+    if (!storedId) {
+      storedId = 'dev_' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+      localStorage.setItem('vane_device_id', storedId);
+    }
+    setDeviceId(storedId);
   }, []);
 
-  // 2. Charger mes photos (filtrées par IP)
+  // 2. Charger mes photos (filtrées par appareil)
   const fetchMyPhotos = async () => {
-    if (!userIp) return;
+    if (!deviceId) return;
     const { data, error } = await supabase
       .from('photos')
       .select('*')
-      .eq('user_ip', userIp)
+      .eq('user_ip', deviceId)
       .order('created_at', { ascending: false });
     
     if (error) console.error("Erreur fetch:", error);
@@ -49,15 +51,15 @@ export default function Photos() {
   };
 
   useEffect(() => {
-    if (!userIp) return;
+    if (!deviceId) return;
     
     fetchMyPhotos();
 
     // Abonnement Temps Réel pour l'utilisateur
     const channel = supabase
-      .channel(`upload-changes-${userIp}`)
+      .channel(`upload-changes-${deviceId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'photos' }, payload => {
-        if (payload.eventType === 'INSERT' && payload.new.user_ip === userIp) {
+        if (payload.eventType === 'INSERT' && payload.new.user_ip === deviceId) {
             setPhotos(prev => {
                 if (prev.some(p => p.id === payload.new.id)) return prev;
                 return [payload.new as Photo, ...prev];
@@ -69,7 +71,7 @@ export default function Photos() {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [userIp]);
+  }, [deviceId]);
 
   // 3. Gérer l'upload
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -87,9 +89,9 @@ export default function Photos() {
         const file = files[i];
         const fileExt = file.name.split('.').pop();
         const fileName = `${Math.random()}.${fileExt}`;
-        const filePath = `${userIp}/${fileName}`;
+        const filePath = `${deviceId}/${fileName}`;
 
-        // Upload vers Supabase Storage (Assurez-vous que le bucket 'event-photos' existe)
+        // Upload vers Supabase Storage
         const { error: uploadError } = await supabase.storage
           .from('event-photos')
           .upload(filePath, file);
@@ -103,10 +105,10 @@ export default function Photos() {
 
         const publicUrl = data.publicUrl;
 
-        // Enregistrer en base de données
+        // Enregistrer en base de données avec l'ID de l'appareil
         const { error: dbError } = await supabase
           .from('photos')
-          .insert([{ url: publicUrl, user_ip: userIp }]);
+          .insert([{ url: publicUrl, user_ip: deviceId }]);
 
         if (dbError) throw dbError;
       }
